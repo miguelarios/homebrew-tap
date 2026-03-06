@@ -11,17 +11,15 @@ class MacosCalendarMcp < Formula
     bin.mkpath
     system "swiftc", "cal-tools.swift", "-o", bin/"cal-tools"
 
-    # Install Python server and wrapper
+    # Install Python server
     libexec.install "calendar_mcp_server.py"
-    libexec.install "calendar-mcp-server.sh" => "calendar-mcp-server"
-    chmod 0755, libexec/"calendar-mcp-server"
 
     # Create venv and install fastmcp
     venv = libexec/"venv"
     system Formula["python@3"].opt_bin/"python3", "-m", "venv", venv.to_s
     system venv/"bin/pip", "install", "--quiet", "fastmcp"
 
-    # Rewrite wrapper script to use Homebrew paths
+    # Write wrapper script with Homebrew paths
     (libexec/"calendar-mcp-server").write <<~BASH
       #!/bin/bash
       exec "#{libexec}/venv/bin/python3" "#{libexec}/calendar_mcp_server.py" "$@"
