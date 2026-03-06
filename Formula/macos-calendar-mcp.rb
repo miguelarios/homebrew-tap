@@ -8,6 +8,7 @@ class MacosCalendarMcp < Formula
 
   def install
     # Compile Swift binary
+    bin.mkpath
     system "swiftc", "cal-tools.swift", "-o", bin/"cal-tools"
 
     # Install Python server and wrapper
