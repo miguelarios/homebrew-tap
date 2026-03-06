@@ -4,7 +4,7 @@ class MacosCalendarMcp < Formula
   head "https://github.com/miguelarios/macos-calendar-mcp.git", branch: "main"
 
   depends_on "python@3"
-  depends_on xcode: ["14.0", :build]
+  depends_on :xcode => :build
   depends_on :macos
 
   def install
