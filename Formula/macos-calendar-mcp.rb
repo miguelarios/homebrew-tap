@@ -1,6 +1,9 @@
 class MacosCalendarMcp < Formula
   desc "MCP server for macOS Calendar — gives AI agents access to EventKit"
   homepage "https://github.com/miguelarios/macos-calendar-mcp"
+  url "https://github.com/miguelarios/macos-calendar-mcp/archive/refs/tags/v0.1.0.tar.gz"
+  sha256 "4a6420671682febcb58a392750564f7227a70bf4402905d4bf2c95f5e92856c0"
+  version "0.1.0"
   head "https://github.com/miguelarios/macos-calendar-mcp.git", branch: "main"
 
   depends_on "python@3"
