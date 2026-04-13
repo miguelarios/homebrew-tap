@@ -1,9 +1,9 @@
 class MacosCalendarMcp < Formula
   desc "MCP server for macOS Calendar — gives AI agents access to EventKit"
   homepage "https://github.com/miguelarios/macos-calendar-mcp"
-  url "https://github.com/miguelarios/macos-calendar-mcp/archive/refs/tags/v0.3.0.tar.gz"
-  sha256 "4288d14c347bfe8f7396536c958a30a09811cca78820ea8cc3f348301660c0c7"
-  version "0.3.0"
+  url "https://github.com/miguelarios/macos-calendar-mcp/archive/refs/tags/v0.4.0.tar.gz"
+  sha256 "d6798efe73025e07623b530dbbf4dd6f396d70dde94558f0714cd21ddd0716c8"
+  version "0.4.0"
   head "https://github.com/miguelarios/macos-calendar-mcp.git", branch: "main"
 
   depends_on "python@3"
@@ -22,20 +22,39 @@ class MacosCalendarMcp < Formula
     system Formula["python@3"].opt_bin/"python3", "-m", "venv", venv.to_s
     system venv/"bin/pip", "install", "--quiet", "fastmcp"
 
-    # Write wrapper script with Homebrew paths
+    # Write wrapper script with startup delay to avoid cold-boot race
     (libexec/"calendar-mcp-server").write <<~BASH
       #!/bin/bash
-      exec "#{libexec}/venv/bin/python3" "#{libexec}/calendar_mcp_server.py" "$@"
+      # Wrapper script for Calendar MCP Server
+      # Includes a short startup delay to avoid race conditions with clients
+      # that launch at login (e.g., Claude Desktop).
+
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] calendar-mcp-server starting..." >&2
+
+      # Brief delay on cold boot so the server is ready before fast-launching clients
+      sleep 3
+
+      PYTHON="#{libexec}/venv/bin/python3"
+      SERVER="#{libexec}/calendar_mcp_server.py"
+
+      if [ ! -x "$PYTHON" ]; then
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Python not found at $PYTHON" >&2
+          exit 1
+      fi
+
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] Launching server: $PYTHON $SERVER" >&2
+      exec "$PYTHON" "$SERVER" "$@"
     BASH
     chmod 0755, libexec/"calendar-mcp-server"
 
-    # Install status CLI with Homebrew paths baked in
+    # Install CLI with start/stop/restart/logs commands
     (bin/"macos-calendar-mcp").write <<~BASH
       #!/bin/bash
       # macos-calendar-mcp — CLI for the Calendar MCP Server
 
       LABEL="homebrew.mxcl.macos-calendar-mcp"
       PORT="9876"
+      LOG_DIR="#{var}/log/macos-calendar-mcp"
 
       cmd_status() {
           local url="http://127.0.0.1:${PORT}/mcp"
@@ -53,9 +72,43 @@ class MacosCalendarMcp < Formula
           fi
       }
 
+      cmd_restart() {
+          echo "Restarting Calendar MCP Server..."
+          brew services restart macos-calendar-mcp
+          echo "Done. Waiting for server..."
+          sleep 4
+          cmd_status
+      }
+
+      cmd_start() {
+          echo "Starting Calendar MCP Server..."
+          brew services start macos-calendar-mcp
+          echo "Done. Waiting for server..."
+          sleep 4
+          cmd_status
+      }
+
+      cmd_stop() {
+          echo "Stopping Calendar MCP Server..."
+          brew services stop macos-calendar-mcp
+          echo "Done."
+      }
+
+      cmd_logs() {
+          echo "=== stderr (last 20 lines) ==="
+          tail -20 "$LOG_DIR/stderr.log" 2>/dev/null || echo "(no stderr log)"
+          echo ""
+          echo "=== stdout (last 20 lines) ==="
+          tail -20 "$LOG_DIR/stdout.log" 2>/dev/null || echo "(no stdout log)"
+      }
+
       case "${1:-status}" in
           status) cmd_status ;;
-          *) echo "Usage: macos-calendar-mcp [status]"; exit 1 ;;
+          restart) cmd_restart ;;
+          start) cmd_start ;;
+          stop) cmd_stop ;;
+          logs) cmd_logs ;;
+          *) echo "Usage: macos-calendar-mcp [status|start|stop|restart|logs]"; exit 1 ;;
       esac
     BASH
     chmod 0755, bin/"macos-calendar-mcp"
@@ -82,6 +135,7 @@ class MacosCalendarMcp < Formula
 
       On first use, macOS will prompt for calendar access permission.
       Check status: macos-calendar-mcp status
+      View logs:    macos-calendar-mcp logs
     EOS
   end
 
