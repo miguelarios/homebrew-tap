@@ -7,6 +7,7 @@ on:
 jobs:
   validate-and-merge:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.actor == 'miguelarios'
     permissions:
       contents: write
@@ -17,18 +18,40 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
 
+      - name: Verify only target formula changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          FILES=$(gh pr view "$PR_NUMBER" --repo miguelarios/homebrew-tap --json files --jq '.files[].path')
+          if [ "$FILES" != "Formula/macos-calendar-mcp.rb" ]; then
+            echo "::error::PR modifies unexpected files: $FILES"
+            exit 1
+          fi
+          echo "PR modifies only the expected formula."
+
       - name: Extract formula fields
         id: formula
         run: |
           FORMULA="Formula/macos-calendar-mcp.rb"
-          URL=$(grep -oP 'url "\K[^"]+' "$FORMULA")
-          SHA=$(grep -oP 'sha256 "\K[^"]+' "$FORMULA")
+          URL=$(grep -oP '^\s*url "\K[^"]+' "$FORMULA" | head -n1)
+          SHA=$(grep -oP '^\s*sha256 "\K[^"]+' "$FORMULA" | head -n1)
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "Formula URL: $URL"
           echo "Formula sha256: $SHA"
 
-      - name: Validate tarball URL
+      - name: Verify tarball URL provenance
+        env:
+          URL: ${{ steps.formula.outputs.url }}
+        run: |
+          EXPECTED_PREFIX="https://github.com/miguelarios/macos-calendar-mcp/"
+          case "$URL" in
+            "$EXPECTED_PREFIX"*) echo "URL provenance verified." ;;
+            *) echo "::error::URL does not point at miguelarios/macos-calendar-mcp: $URL"; exit 1 ;;
+          esac
+
+      - name: Validate tarball URL reachable
         env:
           URL: ${{ steps.formula.outputs.url }}
         run: |
