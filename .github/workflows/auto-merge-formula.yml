@@ -1,0 +1,67 @@
+name: Auto-merge Formula Update
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  validate-and-merge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'miguelarios'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Extract formula fields
+        id: formula
+        run: |
+          FORMULA="Formula/macos-calendar-mcp.rb"
+          URL=$(grep -oP 'url "\K[^"]+' "$FORMULA")
+          SHA=$(grep -oP 'sha256 "\K[^"]+' "$FORMULA")
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Formula URL: $URL"
+          echo "Formula sha256: $SHA"
+
+      - name: Validate tarball URL
+        env:
+          URL: ${{ steps.formula.outputs.url }}
+        run: |
+          HTTP_CODE=$(curl -sL -o /dev/null -w "%{http_code}" "$URL" || echo 000)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Tarball URL returned HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "Tarball URL is valid (HTTP 200)"
+
+      - name: Validate sha256
+        env:
+          URL: ${{ steps.formula.outputs.url }}
+          EXPECTED: ${{ steps.formula.outputs.sha256 }}
+        run: |
+          curl -sL -o tarball.tar.gz "$URL"
+          if ! file tarball.tar.gz | grep -q gzip; then
+            echo "::error::Downloaded file is not a gzip archive"
+            exit 1
+          fi
+          ACTUAL=$(shasum -a 256 tarball.tar.gz | awk '{print $1}')
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::SHA256 mismatch: expected $EXPECTED, got $ACTUAL"
+            exit 1
+          fi
+          echo "SHA256 verified: $ACTUAL"
+
+      - name: Auto-merge PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr merge "$PR_NUMBER" \
+            --repo miguelarios/homebrew-tap \
+            --merge \
+            --delete-branch
